@@ -6,52 +6,43 @@ import re
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# --- الإعدادات النهائية ---
+# --- الإعدادات ---
 CONFIG = {
     'TOKEN': '7941946883:AAERwK7lzjt1_xe-iarb5SkE8IXJs-abfrk', 
     'ADMIN_ID': 8499302703, 
     'ADMIN_USERNAME': '@Mamskskjsjsj', 
     'CHANNEL_ID': '@AP_Fl', 
     'CHANNEL_LINK': 'https://t.me/AP_Fl',
-    'WALLETS': {
-        'TRC20': 'THqcaiM1CQtWYAqQm7iLJ2zFR5WVPFNCDx'
-    }
+    'WALLETS': {'TRC20': 'THqcaiM1CQtWYAqQm7iLJ2zFR5WVPFNCDx'}
 }
 
 bot = telebot.TeleBot(CONFIG['TOKEN'])
 DB_FILE = 'database.json'
 
-# --- دوال قاعدة البيانات ---
 def load_db():
     if not os.path.exists(DB_FILE): return {}
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data if data else {}
+            return json.load(f)
     except: return {}
 
 def save_db(db):
-    try:
-        with open(DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump(db, f, indent=4, ensure_ascii=False)
-    except Exception as e: print(f"Error Saving DB: {e}")
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(db, f, indent=4, ensure_ascii=False)
 
 def calculate_profit(amount):
-    if amount == 20: return 0.6
-    elif amount == 100: return 3.3
-    elif amount == 300: return 10.0
-    return 0
+    profits = {20: 0.6, 100: 3.3, 300: 10.0}
+    return profits.get(amount, 0)
 
-# --- نظام الأرباح التلقائي ---
+# --- نظام الأرباح اليومي ---
 def add_daily_profits():
     db = load_db()
-    for uid in db:
-        deposited_val = db[uid].get('deposit_amount', 0)
-        profit = calculate_profit(deposited_val)
+    for uid, user in db.items():
+        profit = calculate_profit(user.get('deposit_amount', 0))
         if profit > 0:
-            db[uid]['balance'] = db[uid].get('balance', 0.0) + profit
-            db[uid]['withdrawable_profit'] = db[uid].get('withdrawable_profit', 0.0) + profit
-            try: bot.send_message(uid, f"💰 **أرباح يومية جديدة!**\n📈 تم إضافة: `+{profit}$` لرصيد السحب.", parse_mode='Markdown')
+            user['balance'] += profit
+            user['withdrawable_profit'] += profit
+            try: bot.send_message(uid, f"📈 أرباح يومية: `+{profit}$`", parse_mode='Markdown')
             except: continue
     save_db(db)
 
@@ -59,24 +50,21 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(add_daily_profits, 'interval', hours=24)
 scheduler.start()
 
-# --- التحقق من الاشتراك ---
+# --- التحقق من القناة ---
 def is_subscribed(user_id):
     try:
         status = bot.get_chat_member(CONFIG['CHANNEL_ID'], user_id).status
         return status in ['member', 'administrator', 'creator']
     except: return False
 
-def send_join_msg(chat_id):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📢 انضم للقناة الآن", url=CONFIG['CHANNEL_LINK']))
-    bot.send_message(chat_id, "⚠️ للبدء، يجب عليك الاشتراك في القناة أولاً!", reply_markup=markup)
-
-# --- أوامر البوت ---
+# --- الأوامر الرئيسية ---
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = str(message.from_user.id)
     if not is_subscribed(message.from_user.id):
-        send_join_msg(message.chat.id)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("📢 انضم للقناة", url=CONFIG['CHANNEL_LINK']))
+        bot.send_message(message.chat.id, "⚠️ يجب الاشتراك بالقناة أولاً!", reply_markup=markup)
         return
     
     db = load_db()
@@ -91,168 +79,146 @@ def start(message):
         if referrer and referrer in db:
             db[referrer]['referrals_count'] = db[referrer].get('referrals_count', 0) + 1
         save_db(db)
-        bot.send_message(CONFIG['ADMIN_ID'], f"👤 **مستخدم جديد:** {message.from_user.first_name}")
 
-    if not db[uid].get('full_name'):
-        msg = bot.send_message(message.chat.id, "👋 يرجى إرسال اسمك الثلاثي لتفعيل حسابك:")
+    user = db[uid]
+    if not user.get('full_name'):
+        msg = bot.send_message(message.chat.id, "👋 أرسل اسمك الثلاثي لتفعيل الحساب:")
         bot.register_next_step_handler(msg, save_user_name)
-    else: show_menu(message)
+    else:
+        show_menu(message)
 
 def save_user_name(message):
     uid = str(message.from_user.id)
-    db = load_db()
     if message.text and len(message.text.split()) >= 3:
+        db = load_db()
         db[uid]['full_name'] = message.text
         save_db(db)
         show_menu(message)
     else:
-        msg = bot.send_message(message.chat.id, "⚠️ يرجى إرسال الاسم الثلاثي (3 كلمات على الأقل):")
+        msg = bot.send_message(message.chat.id, "⚠️ يرجى إرسال اسم ثلاثي صحيح:")
         bot.register_next_step_handler(msg, save_user_name)
 
 def show_menu(message):
     uid = str(message.from_user.id)
     db = load_db()
-    user = db.get(uid, {})
+    user = db[uid]
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton("📥 إيداع", callback_data='deposit_start'), 
-               types.InlineKeyboardButton("📤 سحب الأرباح", callback_data='withdraw_start'))
-    markup.add(types.InlineKeyboardButton("💰 رصيدي", callback_data='view_balance'), 
+               types.InlineKeyboardButton("📤 سحب", callback_data='withdraw_start'))
+    markup.add(types.InlineKeyboardButton("💰 الرصيد", callback_data='view_balance'), 
                types.InlineKeyboardButton("👥 الإحالات", callback_data='referral_info'))
-    markup.add(types.InlineKeyboardButton("👨‍💻 الدعم الفني", url=f"https://t.me/{CONFIG['ADMIN_USERNAME'].replace('@','')}"))
     
-    msg_text = (f"🏠 **لوحة التحكم**\n\n👤 المستثمر: `{user.get('full_name')}`\n"
-                f"💰 الرصيد الكلي: `{user.get('balance', 0):.2f}$` \n"
-                f"💸 القابل للسحب: `{user.get('withdrawable_profit', 0):.2f}$` \n"
-                f"👥 الإحالات: {user.get('referrals_count', 0)}")
-    bot.send_message(message.chat.id, msg_text, reply_markup=markup, parse_mode='Markdown')
+    text = (f"🏠 **لوحة التحكم**\n\n👤: `{user['full_name']}`\n"
+            f"💵 الرصيد: `{user['balance']:.2f}$`\n"
+            f"✅ الإحالات الفعالة: `{user['active_referrals']}`")
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- معالجة الإيداع ---
-@bot.message_handler(content_types=['photo'])
-def handle_payment_proof(message):
-    uid = str(message.from_user.id)
-    db = load_db()
-    if uid not in db or db[uid].get('has_deposited'): return
-    pending_amt = db[uid].get('pending_amount', 0)
-    if pending_amt == 0:
-        bot.send_message(message.chat.id, "⚠️ اختر الباقة من القائمة أولاً.")
-        return
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"app_{uid}_{pending_amt}"), 
-               types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{uid}"))
-    bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
-    bot.send_message(CONFIG['ADMIN_ID'], f"📩 **إيداع جديد**\n👤: {db[uid]['full_name']}\n💵: {pending_amt}$", reply_markup=markup)
-    bot.send_message(message.chat.id, "⏳ تم إرسال الإثبات للمراجعة.")
-
+# --- معالجة الأزرار (الموحدة) ---
 @bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
+def handle_all_callbacks(call):
     uid = str(call.from_user.id)
     db = load_db()
 
-    if call.data == 'view_balance':
-        user = db.get(uid, {})
-        bot.answer_callback_query(call.id, f"الرصيد: {user.get('balance',0):.2f}$\nللسحب: {user.get('withdrawable_profit',0):.2f}$", show_alert=True)
+    if call.data == 'referral_info':
+        ref_link = f"https://t.me/{bot.get_me().username}?start={uid}"
+        text = (f"👥 **نظام الإحالة**\n\n🔗 رابطك: `{ref_link}`\n"
+                f"🎁 مكافأة الإيداع: **1$**\n"
+                f"📊 الإحالات الفعالة: {db[uid].get('active_referrals', 0)}")
+        bot.send_message(call.message.chat.id, text, parse_mode='Markdown')
+
+    elif call.data == 'withdraw_start':
+        if datetime.now().strftime("%A") != "Saturday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح يوم السبت فقط!", show_alert=True)
+            return
+        # كود اختيار الشبكة كما في السابق...
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("TRC20", callback_data='net_TRC20'),
+                   types.InlineKeyboardButton("BEP20", callback_data='net_BEP20'))
+        bot.edit_message_text("🌐 اختر الشبكة:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif call.data.startswith('net_'):
+        network = call.data.split('_')[1]
+        msg = bot.send_message(call.message.chat.id, f"💰 أدخل مبلغ السحب ({network}):")
+        bot.register_next_step_handler(msg, process_withdraw, network)
 
     elif call.data == 'deposit_start':
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(types.InlineKeyboardButton("💵 20$ (ربح 0.6$)", callback_data='v_20'), 
-                   types.InlineKeyboardButton("💵 100$ (ربح 3.3$)", callback_data='v_100'), 
-                   types.InlineKeyboardButton("💵 300$ (ربح 10$)", callback_data='v_300'))
-        bot.edit_message_text("💰 اختر باقة الإيداع:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("20$", callback_data='v_20'),
+                   types.InlineKeyboardButton("100$", callback_data='v_100'))
+        bot.edit_message_text("💵 اختر باقة:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
     elif call.data.startswith('v_'):
         val = int(call.data.split('_')[1])
         db[uid]['pending_amount'] = val
         save_db(db)
-        bot.edit_message_text(f"✅ باقة {val}$\nحول لعنوان TRC20:\n`{CONFIG['WALLETS']['TRC20']}`\nثم أرسل صورة الإثبات.", call.message.chat.id, call.message.message_id)
-
-    # --- نظام السحب (يوم السبت فقط) ---
-    elif call.data == 'withdraw_start':
-        if datetime.now().strftime("%A") != "Saturday":
-            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم السبت!", show_alert=True)
-            return
-
-        withdrawable = db[uid].get('withdrawable_profit', 0.0)
-        if withdrawable <= 0:
-            bot.answer_callback_query(call.id, "⚠️ رصيد الأرباح صفر حالياً.", show_alert=True)
-            return
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("TRC20", callback_data='net_TRC20'),
-                   types.InlineKeyboardButton("BEP20", callback_data='net_BEP20'))
-        bot.edit_message_text("🌐 اختر شبكة السحب:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-    elif call.data.startswith('net_'):
-        network = call.data.split('_')[1]
-        msg = bot.send_message(call.message.chat.id, f"✅ اخترت شبكة **{network}**\n💬 أدخل المبلغ المراد سحبه:", parse_mode='Markdown')
-        bot.register_next_step_handler(msg, process_withdraw_amount, network)
+        bot.edit_message_text(f"✅ باقة {val}$\nحول للعنوان:\n`{CONFIG['WALLETS']['TRC20']}`\nثم أرسل الصورة.", call.message.chat.id, call.message.message_id)
 
     # --- إدارة الآدمن ---
     if int(uid) == CONFIG['ADMIN_ID']:
         data = call.data.split('_')
         if data[0] == 'app':
             t_uid, amt = data[1], float(data[2])
-            first_profit = calculate_profit(amt)
-            db[t_uid]['balance'] = amt + first_profit
+            db[t_uid]['balance'] = amt + calculate_profit(amt)
             db[t_uid]['deposit_amount'] = amt
-            db[t_uid]['withdrawable_profit'] = db[t_uid].get('withdrawable_profit', 0) + first_profit
+            db[t_uid]['withdrawable_profit'] += calculate_profit(amt)
             db[t_uid]['has_deposited'] = True
+            
+            # مكافأة الداعي
+            ref_id = db[t_uid].get('referred_by')
+            if ref_id and ref_id in db:
+                db[ref_id]['balance'] += 1.0
+                db[ref_id]['withdrawable_profit'] += 1.0
+                db[ref_id]['active_referrals'] += 1
+                try: bot.send_message(ref_id, "🎁 حصلت على 1$ مكافأة إحالة فعالة!")
+                except: pass
+            
             save_db(db)
-            bot.send_message(t_uid, f"✅ تم تفعيل حسابك!\n💰 نزل ربحك الأول فوراً: `+{first_profit}$`.")
+            bot.send_message(t_uid, "✅ تم تفعيل إيداعك!")
             bot.edit_message_text(f"✅ تم تفعيل {t_uid}", call.message.chat.id, call.message.message_id)
-        
-        elif data[0] == 'wapp':
-            bot.send_message(data[1], "✅ تم تأكيد عملية السحب، الأموال في طريقها إليك.")
-            bot.edit_message_text(f"✅ تم الإنجاز لـ {data[1]}", call.message.chat.id, call.message.message_id)
-        
-        elif data[0] == 'wrej':
-            t_uid, amt = data[1], float(data[2])
-            db[t_uid]['withdrawable_profit'] += amt
-            db[t_uid]['balance'] += amt
-            save_db(db)
-            bot.send_message(t_uid, "❌ تم رفض السحب وإعادة الرصيد لحسابك.")
-            bot.edit_message_text("❌ تم الرفض.", call.message.chat.id, call.message.message_id)
 
-# --- دوال السحب والتحقق ---
-def process_withdraw_amount(message, network):
+# --- دوال السحب ---
+def process_withdraw(message, network):
     try:
         amt = float(message.text)
         uid = str(message.from_user.id)
         db = load_db()
-        if amt > db[uid].get('withdrawable_profit', 0):
-            bot.send_message(message.chat.id, "⚠️ المبلغ أكبر من المتاح للسحب.")
+        if amt > db[uid]['withdrawable_profit']:
+            bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ.")
             return
-        if amt <= 0: return
-        
-        msg = bot.send_message(message.chat.id, f"💳 أرسل عنوان محفظة **{network}** الصادر عن المنصة أو المحفظة الباردة:", parse_mode='Markdown')
-        bot.register_next_step_handler(msg, final_withdraw_request, amt, network)
-    except: bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
+        msg = bot.send_message(message.chat.id, f"💳 أرسل عنوان محفظة {network}:")
+        bot.register_next_step_handler(msg, final_withdraw, amt, network)
+    except: bot.send_message(message.chat.id, "⚠️ أدخل رقماً صحيحاً.")
 
-def final_withdraw_request(message, amt, network):
-    uid = str(message.from_user.id)
-    address = message.text.strip()
-    
-    # فلتر التحقق من الرابط
-    valid = False
-    if network == "TRC20" and address.startswith("T") and len(address) >= 34:
-        valid = True
-    elif network == "BEP20" and address.startswith("0x") and len(address) >= 42:
-        valid = True
-        
-    if not valid:
-        bot.send_message(message.chat.id, f"❌ **خطأ في العنوان!**\nعناوين {network} تبدأ بـ {'T' if network=='TRC20' else '0x'}.\nيرجى إعادة العملية من زر السحب.")
+def final_withdraw(message, amt, network):
+    addr = message.text.strip()
+    # التحقق من المحفظة
+    if (network == "TRC20" and not addr.startswith("T")) or (network == "BEP20" and not addr.startswith("0x")):
+        bot.send_message(message.chat.id, "❌ عنوان غير صحيح للشبكة المختارة!")
         return
-
+    
+    uid = str(message.from_user.id)
     db = load_db()
     db[uid]['withdrawable_profit'] -= amt
     db[uid]['balance'] -= amt
     save_db(db)
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ تم التحويل", callback_data=f"wapp_{uid}_{amt}"), 
-               types.InlineKeyboardButton("❌ رفض السحب", callback_data=f"wrej_{uid}_{amt}"))
-    
-    bot.send_message(CONFIG['ADMIN_ID'], f"📤 **طلب سحب**\n👤: {db[uid]['full_name']}\n💰: {amt}$\n🌐 الشبكة: {network}\n💳 العنوان: `{address}`", reply_markup=markup, parse_mode='Markdown')
-    bot.send_message(message.chat.id, "⏳ تم إرسال طلبك. ستصلك رسالة فور التحويل.")
+    markup.add(types.InlineKeyboardButton("✅ تم", callback_data=f"wapp_{uid}"),
+               types.InlineKeyboardButton("❌ رفض", callback_data=f"wrej_{uid}_{amt}"))
+    bot.send_message(CONFIG['ADMIN_ID'], f"📤 طلب سحب: {amt}$\n👤: {db[uid]['full_name']}\n💳: `{addr}`\n🌐: {network}", reply_markup=markup)
+    bot.send_message(message.chat.id, "⏳ تم إرسال الطلب للآدمن.")
+
+@bot.message_handler(content_types=['photo'])
+def handle_proof(message):
+    uid = str(message.from_user.id)
+    db = load_db()
+    if uid in db and db[uid]['pending_amount'] > 0:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"app_{uid}_{db[uid]['pending_amount']}"),
+                   types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{uid}"))
+        bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
+        bot.send_message(CONFIG['ADMIN_ID'], f"📩 إيداع جديد من {db[uid]['full_name']}", reply_markup=markup)
+        bot.send_message(message.chat.id, "⏳ جاري مراجعة الإيداع...")
 
 if __name__ == "__main__":
     bot.infinity_polling()

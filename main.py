@@ -9,7 +9,7 @@ import threading
 # --- 1. الإعدادات الأساسية ---
 CONFIG = {
     'TOKEN': '8524828584:AAEt7svTqofhfYdxdlk-XAd5FH3OS886piY',
-    'ADMIN_ID': 988759701,  # الآيدي الجديد الخاص بك
+    'ADMIN_ID': 988759701, 
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'BOT_USERNAME': 'CoinsGlobalPop_Bot',
     'CHANNEL_ID': '@AP_Fl',
@@ -26,12 +26,14 @@ DB_FILE = 'database.json'
 # --- 2. إدارة قاعدة البيانات ---
 def load_db():
     if not os.path.exists(DB_FILE): return {}
-    with open(DB_FILE, 'r') as f: return json.load(f)
+    try:
+        with open(DB_FILE, 'r') as f: return json.load(f)
+    except: return {}
 
 def save_db(db):
     with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
 
-# --- 3. نظام الأرباح اليومية التلقائي ---
+# --- 3. نظام الأرباح اليومية ---
 def daily_profit_distribution():
     db = load_db()
     for uid, data in db.items():
@@ -53,14 +55,29 @@ def run_scheduler():
         schedule.run_pending()
         time.sleep(60)
 
-# --- 4. التحقق من الاشتراك الإجباري ---
+# --- 4. التحقق من الاشتراك ---
 def check_sub(user_id):
     try:
         status = bot.get_chat_member(CONFIG['CHANNEL_ID'], user_id).status
         return status not in ['left', 'kicked']
-    except: return False
+    except: return True # في حال وجود خطأ بالاتصال نسمح بالدخول مؤقتاً
 
-# --- 5. الأوامر الرئيسية ---
+# --- 5. لوحة التحكم الرئيسية ---
+def main_menu(uid):
+    db = load_db()
+    balance = db.get(str(uid), {}).get('balance', 0.0)
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("📥 إيداع", callback_data='dep_info'),
+        types.InlineKeyboardButton("📤 سحب", callback_data='with_start')
+    )
+    markup.add(
+        types.InlineKeyboardButton("💰 رصيدي", callback_data='view_balance'),
+        types.InlineKeyboardButton("👥 الإحالة ($1)", callback_data='ref_system')
+    )
+    return f"🌟 أهلاً بك في **CoinsGlobalPop**\n\n💰 رصيدك الحالي: `{balance:.2f}$`", markup
+
+# --- 6. معالجة الأوامر ---
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = str(message.from_user.id)
@@ -72,49 +89,64 @@ def start(message):
         save_db(db)
 
     if not check_sub(message.from_user.id):
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📢 انضم للقناة", url=CONFIG['CHANNEL_LINK']))
-        markup.add(types.InlineKeyboardButton("🔄 تأكيد الاشتراك", callback_data='check_sub'))
-        bot.send_message(message.chat.id, "⚠️ يجب الاشتراك في القناة أولاً لاستخدام البوت.", reply_markup=markup)
+        m = types.InlineKeyboardMarkup()
+        m.add(types.InlineKeyboardButton("📢 انضم للقناة", url=CONFIG['CHANNEL_LINK']))
+        m.add(types.InlineKeyboardButton("🔄 تأكيد الاشتراك", callback_data='check_sub'))
+        bot.send_message(message.chat.id, "⚠️ يجب الاشتراك في القناة أولاً لاستخدام البوت.", reply_markup=m)
         return
 
-    m = types.InlineKeyboardMarkup(row_width=2)
-    m.add(types.InlineKeyboardButton("📥 إيداع", callback_data='dep_info'),
-          types.InlineKeyboardButton("📤 سحب", callback_data='with_start'))
-    m.add(types.InlineKeyboardButton("💰 رصيدي", callback_data='view_balance'),
-          types.InlineKeyboardButton("👥 الإحالة (1$)", callback_data='ref_system'))
-    
-    bot.send_message(message.chat.id, f"🌟 أهلاً بك في CoinsGlobalPop\n💰 رصيدك الحالي: {db[uid]['balance']:.2f}$", reply_markup=m)
+    text, markup = main_menu(uid)
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- 6. نظام الإيداع والموافقة (يصل للأدمن الجديد) ---
-@bot.callback_query_handler(func=lambda call: call.data.startswith('ok_dep_'))
-def approve_dep(call):
-    if call.from_user.id != CONFIG['ADMIN_ID']: return
-    
-    _, _, target_uid, amount = call.data.split('_')
-    amount = float(amount)
+# --- 7. معالجة الأزرار التفاعلية ---
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    uid = str(call.from_user.id)
     db = load_db()
-    
-    if target_uid in db:
-        db[target_uid]['balance'] += amount
-        db[target_uid]['base_deposit'] = amount
-        
-        # منح مكافأة إحالة 1$ للداعي عند أول إيداع
-        ref_id = db[target_uid].get('referrer')
-        bonus_msg = ""
-        if ref_id and str(ref_id) in db:
-            db[str(ref_id)]['balance'] += 1.0
-            bonus_msg = f"\n✅ تم منح 1$ للداعي {ref_id}"
-            try: bot.send_message(ref_id, "🎊 مبروك! أحد الأشخاص الذين دعوتهم قام بالإيداع وحصلت على 1$.")
-            except: pass
-            
-        save_db(db)
-        bot.send_message(target_uid, f"✅ تم تفعيل إيداعك بنجاح بقيمة {amount}$!")
-        bot.edit_message_text(f"✅ تمت الموافقة على المستخدم {target_uid}{bonus_msg}", call.message.chat.id, call.message.message_id)
 
-# --- 7. تشغيل البوت ---
+    if call.data == 'check_sub':
+        if check_sub(call.from_user.id):
+            bot.answer_callback_query(call.id, "✅ تم تأكيد الاشتراك!")
+            text, markup = main_menu(uid)
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        else:
+            bot.answer_callback_query(call.id, "❌ لم تشترك في القناة بعد.", show_alert=True)
+
+    elif call.data == 'dep_info':
+        text = f"""
+📥 **قسم الإيداع**
+
+يرجى إرسال المبلغ إلى أحد العناوين التالية:
+
+📌 **شبكة BEP20 (USDT/BNB):**
+`{CONFIG['WALLETS']['BEP20']}`
+
+📌 **شبكة TRC20 (USDT):**
+`{CONFIG['WALLETS']['TRC20']}`
+
+⚠️ **بعد التحويل:** ارسل صورة الإثبات (Screenshot) وقيمة المبلغ هنا.
+        """
+        back = types.InlineKeyboardMarkup()
+        back.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=back, parse_mode='Markdown')
+
+    elif call.data == 'main_menu':
+        text, markup = main_menu(uid)
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+
+    elif call.data == 'view_balance':
+        bal = db.get(uid, {}).get('balance', 0.0)
+        bot.answer_callback_query(call.id, f"رصيدك الحالي هو: {bal}$", show_alert=True)
+
+    elif call.data == 'ref_system':
+        ref_link = f"https://t.me/{CONFIG['BOT_USERNAME']}?start={uid}"
+        text = f"👥 **نظام الإحالة**\n\nاحصل على **1$** عن كل شخص يدخل عبر رابطك ويقوم بالإيداع.\n\n🔗 رابطك: `{ref_link}`"
+        back = types.InlineKeyboardMarkup()
+        back.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=back, parse_mode='Markdown')
+
+# --- 8. تشغيل البوت ---
 if __name__ == "__main__":
-    # تشغيل مجدول الأرباح في خلفية الكود
     threading.Thread(target=run_scheduler, daemon=True).start()
-    print("Bot is Running with New Admin ID: 988759701")
+    print("Bot updated and running...")
     bot.infinity_polling()

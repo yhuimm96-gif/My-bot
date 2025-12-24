@@ -10,7 +10,7 @@ from datetime import datetime
 # --- 1. إعدادات البوت الكاملة ---
 CONFIG = {
     'TOKEN': '8524828584:AAEt7svTqofhfYdxdlk-XAd5FH3OS886piY',
-    'ADMIN_ID': 988759701, # معرفك الذي ظهر في السجلات
+    'ADMIN_ID': 988759701, # معرفك كأدمن
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'BOT_USERNAME': 'CoinsGlobalPop_Bot',
     'CHANNEL_ID': '@AP_Fl',
@@ -103,11 +103,52 @@ def start(message):
     text, markup = get_main_menu(uid)
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- 7. معالجة التفاعلات ---
+# --- 7. استقبال صور الإيداع وإرسالها للأدمن ---
+@bot.message_handler(content_types=['photo'])
+def handle_payment_screenshot(message):
+    uid = message.from_user.id
+    # إرسال الصورة للأدمن مع أزرار الموافقة السريعة
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ موافقة (20$)", callback_data=f"ok_dep_{uid}_20"),
+        types.InlineKeyboardButton("✅ موافقة (100$)", callback_data=f"ok_dep_{uid}_100"),
+        types.InlineKeyboardButton("✅ موافقة (300$)", callback_data=f"ok_dep_{uid}_300")
+    )
+    # تحويل الصورة للأدمن
+    bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
+    bot.send_message(CONFIG['ADMIN_ID'], f"📩 وصل إثبات إيداع جديد من: `{uid}`\nالاسم: {message.from_user.first_name}", reply_markup=markup, parse_mode='Markdown')
+    # تأكيد للمستخدم
+    bot.send_message(message.chat.id, "✅ تم استلام صورة الإثبات بنجاح. سيتم مراجعتها من قبل الإدارة وإضافة الرصيد لحسابك قريباً.")
+
+# --- 8. معالجة التفاعلات وأزرار الموافقة ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     uid = str(call.from_user.id)
     db = load_db()
+
+    # نظام الموافقة على الإيداع (للأدمن فقط)
+    if call.data.startswith('ok_dep_'):
+        if call.from_user.id != CONFIG['ADMIN_ID']: return
+        
+        _, _, target_uid, amount = call.data.split('_')
+        amount = float(amount)
+        db = load_db()
+        
+        if target_uid in db:
+            db[target_uid]['balance'] += amount
+            db[target_uid]['base_deposit'] = amount
+            
+            # مكافأة الداعي 1$
+            ref_id = db[target_uid].get('referrer')
+            if ref_id and str(ref_id) in db:
+                db[str(ref_id)]['balance'] += 1.0
+                try: bot.send_message(ref_id, "🎊 مبروك! أحد الأشخاص الذين دعوتهم قام بالإيداع، وحصلت على 1$ مكافأة.")
+                except: pass
+                
+            save_db(db)
+            bot.send_message(target_uid, f"✅ تم تأكيد إيداعك بقيمة {amount}$ وبدأت خطة الاستثمار!")
+            bot.edit_message_text(f"✅ تمت الموافقة على إيداع المستخدم {target_uid} بقيمة {amount}$", call.message.chat.id, call.message.message_id)
+        return
 
     if call.data == 'check_sub':
         if is_subbed(call.from_user.id):
@@ -118,7 +159,7 @@ def handle_query(call):
             bot.answer_callback_query(call.id, "❌ لم تشترك في القناة بعد.", show_alert=True)
 
     elif call.data == 'dep_info':
-        text = f"📥 **قسم الإيداع والاستثمار**\n\nيرجى إرسال المبلغ إلى أحد العناوين التالية:\n\n📌 **BEP20 (USDT):**\n`{CONFIG['WALLETS']['BEP20']}`\n\n📌 **TRC20 (USDT):**\n`{CONFIG['WALLETS']['TRC20']}`\n\n⚠️ بعد التحويل، ارسل صورة الإثبات هنا."
+        text = f"📥 **قسم الإيداع والاستثمار**\n\nيرجى إرسال المبلغ إلى أحد العناوين التالية:\n\n📌 **BEP20 (USDT):**\n`{CONFIG['WALLETS']['BEP20']}`\n\n📌 **TRC20 (USDT):**\n`{CONFIG['WALLETS']['TRC20']}`\n\n⚠️ **بعد التحويل:** ارسل صورة الإثبات (Screenshot) هنا في الشات وسنقوم بتفعيل حسابك."
         back = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_home'))
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=back, parse_mode='Markdown')
 
@@ -142,8 +183,8 @@ def handle_query(call):
         else:
             bot.answer_callback_query(call.id, "ارسل عنوان محفظتك والمبلغ للأدمن لسحب رصيدك.", show_alert=True)
 
-# --- 8. تشغيل السيرفر ---
+# --- 9. تشغيل البوت ---
 if __name__ == "__main__":
     threading.Thread(target=run_scheduler, daemon=True).start()
-    print("Bot is fully updated and running...")
+    print("Bot is fully updated and running with Photo Confirmation...")
     bot.infinity_polling()

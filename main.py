@@ -5,11 +5,12 @@ import os
 import schedule
 import time
 import threading
+from datetime import datetime
 
-# --- 1. الإعدادات الأساسية ---
+# --- 1. إعدادات البوت الكاملة ---
 CONFIG = {
     'TOKEN': '8524828584:AAEt7svTqofhfYdxdlk-XAd5FH3OS886piY',
-    'ADMIN_ID': 988759701, 
+    'ADMIN_ID': 988759701, # معرفك الذي ظهر في السجلات
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'BOT_USERNAME': 'CoinsGlobalPop_Bot',
     'CHANNEL_ID': '@AP_Fl',
@@ -33,7 +34,7 @@ def load_db():
 def save_db(db):
     with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
 
-# --- 3. نظام الأرباح اليومية ---
+# --- 3. نظام الأرباح التلقائي ---
 def daily_profit_distribution():
     db = load_db()
     for uid, data in db.items():
@@ -45,7 +46,7 @@ def daily_profit_distribution():
         
         if profit > 0:
             data['balance'] += profit
-            try: bot.send_message(uid, f"💰 **إشعار ربح:** تمت إضافة {profit}$ لرصيدك اليومي.")
+            try: bot.send_message(uid, f"💰 **ربح يومي جديد:** تم إضافة {profit}$ لرصيدك.")
             except: pass
     save_db(db)
 
@@ -56,26 +57,26 @@ def run_scheduler():
         time.sleep(60)
 
 # --- 4. التحقق من الاشتراك ---
-def check_sub(user_id):
+def is_subbed(user_id):
     try:
         status = bot.get_chat_member(CONFIG['CHANNEL_ID'], user_id).status
         return status not in ['left', 'kicked']
-    except: return True # في حال وجود خطأ بالاتصال نسمح بالدخول مؤقتاً
+    except: return True
 
 # --- 5. لوحة التحكم الرئيسية ---
-def main_menu(uid):
+def get_main_menu(uid):
     db = load_db()
-    balance = db.get(str(uid), {}).get('balance', 0.0)
+    bal = db.get(str(uid), {}).get('balance', 0.0)
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("📥 إيداع", callback_data='dep_info'),
-        types.InlineKeyboardButton("📤 سحب", callback_data='with_start')
+        types.InlineKeyboardButton("📥 إيداع واستثمار", callback_data='dep_info'),
+        types.InlineKeyboardButton("📤 سحب (السبت)", callback_data='with_start')
     )
     markup.add(
         types.InlineKeyboardButton("💰 رصيدي", callback_data='view_balance'),
         types.InlineKeyboardButton("👥 الإحالة ($1)", callback_data='ref_system')
     )
-    return f"🌟 أهلاً بك في **CoinsGlobalPop**\n\n💰 رصيدك الحالي: `{balance:.2f}$`", markup
+    return f"🌟 أهلاً بك في **CoinsGlobalPop**\n\n💰 رصيدك الحالي: `{bal:.2f}$`", markup
 
 # --- 6. معالجة الأوامر ---
 @bot.message_handler(commands=['start'])
@@ -84,69 +85,65 @@ def start(message):
     db = load_db()
 
     if uid not in db:
-        ref = message.text.split()[1] if len(message.text.split()) > 1 else None
-        db[uid] = {'balance': 0.0, 'name': message.from_user.first_name, 'base_deposit': 0, 'referrer': ref}
+        referrer = None
+        if len(message.text.split()) > 1:
+            ref_id = message.text.split()[1]
+            if ref_id.isdigit() and ref_id != uid:
+                referrer = ref_id
+        db[uid] = {'balance': 0.0, 'name': message.from_user.first_name, 'base_deposit': 0, 'referrer': referrer}
         save_db(db)
 
-    if not check_sub(message.from_user.id):
+    if not is_subbed(message.from_user.id):
         m = types.InlineKeyboardMarkup()
         m.add(types.InlineKeyboardButton("📢 انضم للقناة", url=CONFIG['CHANNEL_LINK']))
         m.add(types.InlineKeyboardButton("🔄 تأكيد الاشتراك", callback_data='check_sub'))
-        bot.send_message(message.chat.id, "⚠️ يجب الاشتراك في القناة أولاً لاستخدام البوت.", reply_markup=m)
+        bot.send_message(message.chat.id, "⚠️ يجب الاشتراك في القناة أولاً لتفعيل البوت.", reply_markup=m)
         return
 
-    text, markup = main_menu(uid)
+    text, markup = get_main_menu(uid)
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- 7. معالجة الأزرار التفاعلية ---
+# --- 7. معالجة التفاعلات ---
 @bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
+def handle_query(call):
     uid = str(call.from_user.id)
     db = load_db()
 
     if call.data == 'check_sub':
-        if check_sub(call.from_user.id):
+        if is_subbed(call.from_user.id):
             bot.answer_callback_query(call.id, "✅ تم تأكيد الاشتراك!")
-            text, markup = main_menu(uid)
+            text, markup = get_main_menu(uid)
             bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
         else:
             bot.answer_callback_query(call.id, "❌ لم تشترك في القناة بعد.", show_alert=True)
 
     elif call.data == 'dep_info':
-        text = f"""
-📥 **قسم الإيداع**
-
-يرجى إرسال المبلغ إلى أحد العناوين التالية:
-
-📌 **شبكة BEP20 (USDT/BNB):**
-`{CONFIG['WALLETS']['BEP20']}`
-
-📌 **شبكة TRC20 (USDT):**
-`{CONFIG['WALLETS']['TRC20']}`
-
-⚠️ **بعد التحويل:** ارسل صورة الإثبات (Screenshot) وقيمة المبلغ هنا.
-        """
-        back = types.InlineKeyboardMarkup()
-        back.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+        text = f"📥 **قسم الإيداع والاستثمار**\n\nيرجى إرسال المبلغ إلى أحد العناوين التالية:\n\n📌 **BEP20 (USDT):**\n`{CONFIG['WALLETS']['BEP20']}`\n\n📌 **TRC20 (USDT):**\n`{CONFIG['WALLETS']['TRC20']}`\n\n⚠️ بعد التحويل، ارسل صورة الإثبات هنا."
+        back = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_home'))
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=back, parse_mode='Markdown')
 
-    elif call.data == 'main_menu':
-        text, markup = main_menu(uid)
+    elif call.data == 'main_home':
+        text, markup = get_main_menu(uid)
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
 
     elif call.data == 'view_balance':
         bal = db.get(uid, {}).get('balance', 0.0)
-        bot.answer_callback_query(call.id, f"رصيدك الحالي هو: {bal}$", show_alert=True)
+        bot.answer_callback_query(call.id, f"رصيدك: {bal:.2f}$", show_alert=True)
 
     elif call.data == 'ref_system':
         ref_link = f"https://t.me/{CONFIG['BOT_USERNAME']}?start={uid}"
-        text = f"👥 **نظام الإحالة**\n\nاحصل على **1$** عن كل شخص يدخل عبر رابطك ويقوم بالإيداع.\n\n🔗 رابطك: `{ref_link}`"
-        back = types.InlineKeyboardMarkup()
-        back.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+        text = f"👥 **نظام الإحالة**\n\nاحصل على **1$** عن كل شخص يقوم بالإيداع عبر رابطك.\n\n🔗 رابطك: `{ref_link}`"
+        back = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_home'))
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=back, parse_mode='Markdown')
 
-# --- 8. تشغيل البوت ---
+    elif call.data == 'with_start':
+        if datetime.now().strftime('%A') != "Saturday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح يوم السبت فقط!", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "ارسل عنوان محفظتك والمبلغ للأدمن لسحب رصيدك.", show_alert=True)
+
+# --- 8. تشغيل السيرفر ---
 if __name__ == "__main__":
     threading.Thread(target=run_scheduler, daemon=True).start()
-    print("Bot updated and running...")
+    print("Bot is fully updated and running...")
     bot.infinity_polling()

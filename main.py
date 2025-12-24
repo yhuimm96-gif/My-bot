@@ -176,8 +176,9 @@ def callback_handler(call):
         bot.edit_message_text(f"✅ باقة {val}$\nحول لعنوان BEP20 حصراً:\n`{CONFIG['WALLETS']['BEP20']}`\nثم أرسل صورة الإثبات.", call.message.chat.id, call.message.message_id)
 
     elif call.data == 'withdraw_start':
-        if datetime.now().strftime("%A") != "Thursday":
-            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الخميس!", show_alert=True)
+        # التحقق من أن اليوم هو الجمعة (Friday) حصراً
+        if datetime.now().strftime("%A") != "Friday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الجمعة!", show_alert=True)
             return
         if user['withdrawable_profit'] <= 0:
             bot.answer_callback_query(call.id, "⚠️ لا يوجد رصيد للسحب.", show_alert=True)

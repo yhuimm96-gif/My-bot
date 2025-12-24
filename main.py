@@ -153,3 +153,95 @@ def show_menu(message):
 def callback_handler(call):
     uid = str(call.from_user.id)
     user = get_user(uid)
+
+    if call.data == 'view_balance':
+        bot.answer_callback_query(call.id, f"الرصيد: {user['balance']:.2f}$\nللسحب: {user['withdrawable_profit']:.2f}$", show_alert=True)
+
+    elif call.data == 'referral_info':
+        bot_username = bot.get_me().username
+        ref_link = f"https://t.me/{bot_username}?start={uid}"
+        text = (f"👥 **نظام الإحالة**\n\n🎁 اربح 1$ عن كل شخص يشحن حسابه!\n\n🔗 رابط إحالتك:\n`{ref_link}`\n\n📊 إحصائياتك:\n- الإحالات: {user['referrals_count']}\n- الفعالة: {user['active_referrals']}")
+        bot.send_message(call.message.chat.id, text, parse_mode='Markdown')
+
+    elif call.data == 'deposit_start':
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(types.InlineKeyboardButton("💵 20$ (ربح 0.6$)", callback_data='v_20'), 
+                   types.InlineKeyboardButton("💵 100$ (ربح 3.3$)", callback_data='v_100'), 
+                   types.InlineKeyboardButton("💵 300$ (ربح 10$)", callback_data='v_300'))
+        bot.edit_message_text("💰 اختر باقة الإيداع:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif call.data.startswith('v_'):
+        val = int(call.data.split('_')[1])
+        update_user(uid, pending_amount=val)
+        bot.edit_message_text(f"✅ باقة {val}$\nحول لعنوان BEP20 حصراً:\n`{CONFIG['WALLETS']['BEP20']}`\nثم أرسل صورة الإثبات.", call.message.chat.id, call.message.message_id)
+
+    elif call.data == 'withdraw_start':
+        # تمت إعادة التحقق ليصبح يوم السبت (Saturday)
+        if datetime.now().strftime("%A") != "Saturday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم السبت!", show_alert=True)
+            return
+        if user['withdrawable_profit'] <= 0:
+            bot.answer_callback_query(call.id, "⚠️ لا يوجد رصيد للسحب.", show_alert=True)
+            return
+        msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ الذي تود سحبه (متاح: {user['withdrawable_profit']:.2f}$):")
+        bot.register_next_step_handler(msg, process_withdraw_amount)
+
+    if int(uid) == CONFIG['ADMIN_ID']:
+        data = call.data.split('_')
+        if data[0] == 'app':
+            t_uid, amt = data[1], float(data[2])
+            t_user = get_user(t_uid)
+            first_profit = calculate_profit(amt)
+            update_user(t_uid, balance=amt+first_profit, deposit_amount=amt, withdrawable_profit=first_profit, has_deposited=1)
+            
+            if t_user['referred_by']:
+                ref = get_user(t_user['referred_by'])
+                if ref:
+                    update_user(ref['uid'], balance=ref['balance']+1.0, withdrawable_profit=ref['withdrawable_profit']+1.0, active_referrals=ref['active_referrals']+1)
+            
+            bot.send_message(t_uid, "✅ تم تفعيل حسابك بنجاح!")
+            bot.edit_message_text(f"✅ تم تفعيل {t_uid}", call.message.chat.id, call.message.message_id)
+
+@bot.message_handler(content_types=['photo'])
+def handle_payment_proof(message):
+    uid = str(message.from_user.id)
+    user = get_user(uid)
+    if not user or user['has_deposited']: return
+    if user['pending_amount'] == 0:
+        bot.send_message(message.chat.id, "⚠️ اختر الباقة أولاً.")
+        return
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"app_{uid}_{user['pending_amount']}"), 
+               types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{uid}"))
+    bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
+    bot.send_message(CONFIG['ADMIN_ID'], f"📩 **إيداع جديد**\n👤: {user['full_name']}\n💵: {user['pending_amount']}$", reply_markup=markup)
+    bot.send_message(message.chat.id, "⏳ تم إرسال الإثبات للمراجعة.")
+
+def process_withdraw_amount(message):
+    try:
+        amt = float(message.text)
+        uid = str(message.from_user.id)
+        user = get_user(uid)
+        if amt > user['withdrawable_profit']:
+            bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ.")
+            return
+        msg = bot.send_message(message.chat.id, "💳 أرسل عنوان محفظة **BEP20**:")
+        bot.register_next_step_handler(msg, final_withdraw_request, amt)
+    except: bot.send_message(message.chat.id, "⚠️ أدخل أرقاماً فقط.")
+
+def final_withdraw_request(message, amt):
+    uid = str(message.from_user.id)
+    address = message.text.strip()
+    if not address.lower().startswith("0x") or len(address) != 42:
+        msg = bot.send_message(message.chat.id, "❌ عنوان BEP20 غير صحيح! يجب أن يبدأ بـ 0x ويتكون من 42 حرف.\nأعد المحاولة:")
+        bot.register_next_step_handler(msg, final_withdraw_request, amt)
+        return
+    
+    user = get_user(uid)
+    update_user(uid, balance=user['balance']-amt, withdrawable_profit=user['withdrawable_profit']-amt)
+    bot.send_message(CONFIG['ADMIN_ID'], f"📤 **طلب سحب**\n👤: {user['full_name']}\n💰: {amt}$\n💳: `{address}`", parse_mode='Markdown')
+    bot.send_message(message.chat.id, "⏳ تم إرسال طلب السحب للمراجعة.")
+
+if __name__ == "__main__":
+    print("Bot is running...")
+    bot.infinity_polling()

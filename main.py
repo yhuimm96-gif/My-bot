@@ -24,7 +24,6 @@ DB_NAME = 'bot_database.db'
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # إنشاء الجدول وتحديد الأعمدة المطلوبة بدقة
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (uid TEXT PRIMARY KEY, full_name TEXT, balance REAL, withdrawable_profit REAL,
                   referred_by TEXT, referrals_count INTEGER, active_referrals INTEGER,
@@ -177,8 +176,9 @@ def callback_handler(call):
         bot.edit_message_text(f"✅ باقة {val}$\nحول لعنوان BEP20 حصراً:\n`{CONFIG['WALLETS']['BEP20']}`\nثم أرسل صورة الإثبات.", call.message.chat.id, call.message.message_id)
 
     elif call.data == 'withdraw_start':
-        if datetime.now().strftime("%A") != "Saturday":
-            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم السبت!", show_alert=True)
+        # تم التعديل هنا ليصبح يوم الخميس (Thursday)
+        if datetime.now().strftime("%A") != "Thursday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الخميس!", show_alert=True)
             return
         if user['withdrawable_profit'] <= 0:
             bot.answer_callback_query(call.id, "⚠️ لا يوجد رصيد للسحب.", show_alert=True)
@@ -222,28 +222,3 @@ def process_withdraw_amount(message):
     try:
         amt = float(message.text)
         uid = str(message.from_user.id)
-        user = get_user(uid)
-        if amt > user['withdrawable_profit']:
-            bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ.")
-            return
-        msg = bot.send_message(message.chat.id, "💳 أرسل عنوان محفظة **BEP20**:")
-        bot.register_next_step_handler(msg, final_withdraw_request, amt)
-    except: bot.send_message(message.chat.id, "⚠️ أدخل أرقاماً فقط.")
-
-def final_withdraw_request(message, amt):
-    uid = str(message.from_user.id)
-    address = message.text.strip()
-    # التحقق من صحة BEP20
-    if not address.lower().startswith("0x") or len(address) != 42:
-        msg = bot.send_message(message.chat.id, "❌ عنوان BEP20 غير صحيح! يجب أن يبدأ بـ 0x ويتكون من 42 حرف.\nأعد المحاولة:")
-        bot.register_next_step_handler(msg, final_withdraw_request, amt)
-        return
-    
-    user = get_user(uid)
-    update_user(uid, balance=user['balance']-amt, withdrawable_profit=user['withdrawable_profit']-amt)
-    bot.send_message(CONFIG['ADMIN_ID'], f"📤 **طلب سحب**\n👤: {user['full_name']}\n💰: {amt}$\n💳: `{address}`", parse_mode='Markdown')
-    bot.send_message(message.chat.id, "⏳ تم إرسال طلب السحب للمراجعة.")
-
-if __name__ == "__main__":
-    print("Bot is running with SQLite...")
-    bot.infinity_polling()

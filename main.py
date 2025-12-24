@@ -3,9 +3,9 @@ from telebot import types
 import json
 import os
 
-# --- الإعدادات المحدثة ---
+# --- الإعدادات المحدثة بالتوكن الجديد ---
 CONFIG = {
-    'TOKEN': '8524828584:AAEt7svTqofhfYdxdlk-XAd5FH3OS886piY', # التوكن الجديد الخاص بك
+    'TOKEN': '8524828584:AAFX1-WGEdV1mS5F2mdxA36xHHRfMXehj9g', # التوكن الجديد
     'ADMIN_ID': 988759701, 
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'WALLETS': {
@@ -27,7 +27,7 @@ def load_db():
 def save_db(db):
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db, f, indent=4, ensure_ascii=False)
 
-# --- نظام البداية ---
+# --- نظام البداية والتسجيل ---
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = str(message.from_user.id)
@@ -71,7 +71,7 @@ def show_menu(message):
     text = f"🏠 **لوحة التحكم الخاصة بك**\n\n👤 المستثمر: {db[uid]['full_name']}\n💰 رصيدك: `{bal:.2f}$`"
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- معالجة الإيداع ---
+# --- نظام الإيداع والشبكات ---
 @bot.callback_query_handler(func=lambda call: call.data == 'deposit_start')
 def deposit_start(call):
     markup = types.InlineKeyboardMarkup()
@@ -107,7 +107,7 @@ def show_wallet(call):
             "⚠️ بعد التحويل، ارسل **صورة إثبات الدفع** هنا.")
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='Markdown')
 
-# --- استقبال الإثبات والموافقة ---
+# --- استقبال الإثبات ولوحة المسؤول ---
 @bot.message_handler(content_types=['photo'])
 def handle_proof(message):
     uid = str(message.from_user.id)

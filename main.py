@@ -3,10 +3,10 @@ from telebot import types
 import json
 import os
 
-# --- الإعدادات المحدثة بالتوكن الجديد ---
+# --- الإعدادات المحدثة بالتوكن ومعرف الآدمن الجديد ---
 CONFIG = {
-    'TOKEN': '8524828584:AAGGgGaQa7uMjQu3zdgDE9vWc3sTXtfh1hw', 
-    'ADMIN_ID': 988759701, 
+    'TOKEN': '7941946883:AAERwK7lzjt1_xe-iarb5SkE8IXJs-abfrk', 
+    'ADMIN_ID': 8499302703, # تم تحديث معرف الآدمن هنا
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'WALLETS': {
         'BEP20': '0x31d62d87fd666d3e4837c2de682adf1e21510295',

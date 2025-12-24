@@ -5,7 +5,7 @@ import os
 
 # --- الإعدادات المحدثة بالتوكن الجديد ---
 CONFIG = {
-    'TOKEN': '8524828584:AAFX1-WGEdV1mS5F2mdxA36xHHRfMXehj9g', # التوكن الجديد
+    'TOKEN': '8524828584:AAFOMKNIm_Wm_tp4Wx0FlpfZeQ_ConvtSTU',
     'ADMIN_ID': 988759701, 
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'WALLETS': {
@@ -71,7 +71,7 @@ def show_menu(message):
     text = f"🏠 **لوحة التحكم الخاصة بك**\n\n👤 المستثمر: {db[uid]['full_name']}\n💰 رصيدك: `{bal:.2f}$`"
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
 
-# --- نظام الإيداع والشبكات ---
+# --- نظام الإيداع ---
 @bot.callback_query_handler(func=lambda call: call.data == 'deposit_start')
 def deposit_start(call):
     markup = types.InlineKeyboardMarkup()

@@ -176,9 +176,8 @@ def callback_handler(call):
         bot.edit_message_text(f"✅ باقة {val}$\nحول لعنوان BEP20 حصراً:\n`{CONFIG['WALLETS']['BEP20']}`\nثم أرسل صورة الإثبات.", call.message.chat.id, call.message.message_id)
 
     elif call.data == 'withdraw_start':
-        # تم التعديل هنا ليصبح يوم الخميس (Thursday)
-        if datetime.now().strftime("%A") != "Thursday":
-            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الخميس!", show_alert=True)
+        if datetime.now().strftime("%A") != "Wednesday":
+            bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الأربعاء!", show_alert=True)
             return
         if user['withdrawable_profit'] <= 0:
             bot.answer_callback_query(call.id, "⚠️ لا يوجد رصيد للسحب.", show_alert=True)
@@ -186,39 +185,6 @@ def callback_handler(call):
         msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ الذي تود سحبه (متاح: {user['withdrawable_profit']:.2f}$):")
         bot.register_next_step_handler(msg, process_withdraw_amount)
 
-    # إدارة الآدمن
     if int(uid) == CONFIG['ADMIN_ID']:
         data = call.data.split('_')
         if data[0] == 'app':
-            t_uid, amt = data[1], float(data[2])
-            t_user = get_user(t_uid)
-            first_profit = calculate_profit(amt)
-            update_user(t_uid, balance=amt+first_profit, deposit_amount=amt, withdrawable_profit=first_profit, has_deposited=1)
-            
-            if t_user['referred_by']:
-                ref = get_user(t_user['referred_by'])
-                if ref:
-                    update_user(ref['uid'], balance=ref['balance']+1.0, withdrawable_profit=ref['withdrawable_profit']+1.0, active_referrals=ref['active_referrals']+1)
-            
-            bot.send_message(t_uid, "✅ تم تفعيل حسابك بنجاح!")
-            bot.edit_message_text(f"✅ تم تفعيل {t_uid}", call.message.chat.id, call.message.message_id)
-
-@bot.message_handler(content_types=['photo'])
-def handle_payment_proof(message):
-    uid = str(message.from_user.id)
-    user = get_user(uid)
-    if not user or user['has_deposited']: return
-    if user['pending_amount'] == 0:
-        bot.send_message(message.chat.id, "⚠️ اختر الباقة أولاً.")
-        return
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"app_{uid}_{user['pending_amount']}"), 
-               types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{uid}"))
-    bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
-    bot.send_message(CONFIG['ADMIN_ID'], f"📩 **إيداع جديد**\n👤: {user['full_name']}\n💵: {user['pending_amount']}$", reply_markup=markup)
-    bot.send_message(message.chat.id, "⏳ تم إرسال الإثبات للمراجعة.")
-
-def process_withdraw_amount(message):
-    try:
-        amt = float(message.text)
-        uid = str(message.from_user.id)

@@ -5,7 +5,7 @@ import os
 
 # --- الإعدادات المحدثة بالتوكن الجديد ---
 CONFIG = {
-    'TOKEN': '8524828584:AAFOMKNIm_Wm_tp4Wx0FlpfZeQ_ConvtSTU',
+    'TOKEN': '8524828584:AAGGgGaQa7uMjQu3zdgDE9vWc3sTXtfh1hw', 
     'ADMIN_ID': 988759701, 
     'ADMIN_USERNAME': '@Mamskskjsjsj',
     'WALLETS': {

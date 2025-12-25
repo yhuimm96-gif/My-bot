@@ -6,19 +6,19 @@ import time
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# --- 1. الإعدادات الأساسية ---
+# --- 1. الإعدادات الأساسية (تم تحديثها وفقاً للملفات) ---
 CONFIG = {
     'TOKEN': '7941946883:AAERwK7lzjt1_xe-iarb5SkE8IXJs-abfrk', 
     'ADMIN_ID': 8499302703, 
     'CHANNEL_ID': '@AP_Fl', 
     'CHANNEL_LINK': 'https://t.me/AP_Fl',
-    'SUPPORT_LINK': 'https://wa.me/qr/VPE2KU5DNYCSH1'
+    'SUPPORT_LINK': 'https://t.me/ContactUsCOINSGLOPAL22_bot?start=98875970'
 }
 
 bot = telebot.TeleBot(CONFIG['TOKEN'])
 DB_NAME = 'bot_database.db'
 
-# --- 2. إدارة قاعدة البيانات بنظام الاتصال الآمن ---
+# --- 2. إدارة قاعدة البيانات ---
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME, timeout=20)
     conn.row_factory = sqlite3.Row
@@ -27,6 +27,7 @@ def get_db_connection():
 def init_db():
     with get_db_connection() as conn:
         c = conn.cursor()
+        # [span_3](start_span)[span_4](start_span)إنشاء جدول المستخدمين وفقاً للهيكل المطلوب[span_3](end_span)[span_4](end_span)
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (uid TEXT PRIMARY KEY, full_name TEXT, balance REAL, withdrawable_profit REAL,
                       referred_by TEXT, referrals_count INTEGER, active_referrals INTEGER,
@@ -34,15 +35,17 @@ def init_db():
         
         c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         
+        # [span_5](start_span)[span_6](start_span)الإعدادات الافتراضية المستخرجة من قاعدة البيانات[span_5](end_span)[span_6](end_span)
         default_settings = [
             ('wallet', '0x31d62d87fd666d3e4837c2de682adf1e21510295'),
-            ('profit_20', '0.6'),
+            ('profit_20', '0.63'),
             ('profit_100', '3.3'),
             ('profit_300', '10.0')
         ]
         c.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", default_settings)
         conn.commit()
 
+# دوال مساعدة للتعامل مع البيانات
 def get_setting(key):
     with get_db_connection() as conn:
         res = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
@@ -134,10 +137,10 @@ def admin_callbacks(call):
         with get_db_connection() as conn:
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             total = conn.execute("SELECT SUM(deposit_amount) FROM users").fetchone()[0] or 0
-            bot.send_message(call.message.chat.id, f"📊 **الإحصائيات:**\n👤 المشتركون: {count}\n💰 إجمالي الاستثمارات: {total:.2f}$")
+            bot.send_message(call.message.chat.id, f"📊 **الإحصائيات الحالية:**\n\n👤 عدد المشتركين: {count}\n💰 إجمالي الإيداعات: {total:.2f}$")
     elif call.data == 'adm_backup':
         backup_database()
-        bot.answer_callback_query(call.id, "✅ تم إرسال النسخة")
+        bot.answer_callback_query(call.id, "✅ تم إرسال النسخة الاحتياطية")
 
 def update_wallet_setting(message):
     new_val = message.text.strip()
@@ -160,10 +163,10 @@ def save_profit_setting(message, package):
         with get_db_connection() as conn:
             conn.execute(f"UPDATE settings SET value=? WHERE key='profit_{package}'", (str(new_val),))
             conn.commit()
-        bot.send_message(message.chat.id, f"✅ تم التحديث باقة {package}$ إلى {new_val}$.")
-    except: bot.send_message(message.chat.id, "❌ استخدم أرقاماً فقط.")
+        bot.send_message(message.chat.id, "✅ تم التحديث بنجاح.")
+    except: bot.send_message(message.chat.id, "❌ أرقام فقط.")
 
-# --- 5. أوامر المستخدم والتحقق ---
+# --- 5. أوامر المستخدم ---
 def is_subscribed(user_id):
     try:
         status = bot.get_chat_member(CONFIG['CHANNEL_ID'], user_id).status
@@ -184,7 +187,7 @@ def start(message):
         args = message.text.split()
         referrer = args[1] if len(args) > 1 else None
         add_user(uid, referrer)
-        bot.send_message(CONFIG['ADMIN_ID'], f"👤 **عضو جديد:** {message.from_user.first_name}")
+        bot.send_message(CONFIG['ADMIN_ID'], f"🆕 **عضو جديد:**\n👤 الاسم: {message.from_user.first_name}\n🆔 الآيدي: `{uid}`")
         user = get_user(uid)
         
     if not user['full_name']:
@@ -211,24 +214,22 @@ def show_menu(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('u_'))
 def user_actions(call):
     uid = str(call.from_user.id); user = get_user(uid)
-    if call.data == 'u_bal': bot.answer_callback_query(call.id, f"الرصيد: {user['balance']:.2f}$\nللسحب: {user['withdrawable_profit']:.2f}$", show_alert=True)
+    if call.data == 'u_bal': 
+        bot.answer_callback_query(call.id, f"رصيدك: {user['balance']:.2f}$\nمتاح للسحب: {user['withdrawable_profit']:.2f}$", show_alert=True)
     elif call.data == 'u_ref':
         ref_link = f"https://t.me/{bot.get_me().username}?start={uid}"
-        text = (
-            f"👥 **نظام الإحالة**\n\n"
-            f"🔗 رابط إحالتك:\n`{ref_link}`\n\n"
-            f"📊 إحصائياتك:\n"
-            f"👤 إجمالي الإحالات: `{user['referrals_count']}`\n"
-            f"✅ إحالات فعالة (مودعين): `{user['active_referrals']}`\n\n"
-            f"💰 تحصل على 1$ مكافأة عن كل إحالة تقوم بالإيداع."
-        )
+        text = f"👥 **نظام الإحالة**\n\n🔗 رابطك:\n`{ref_link}`\n\n👤 الإحالات: `{user['referrals_count']}`\n✅ المستثمرون: `{user['active_referrals']}`\n💰 مكافأتك: 1$ عن كل إيداع."
         bot.send_message(call.message.chat.id, text, parse_mode='Markdown')
     elif call.data == 'u_dep':
+        # [span_7](start_span)[span_8](start_span)شرط الإيداع لمرة واحدة فقط للمستخدم[span_7](end_span)[span_8](end_span)
+        if user['has_deposited'] == 1:
+            bot.answer_callback_query(call.id, "⚠️ مسموح بالإيداع مرة واحدة فقط لكل مستخدم.", show_alert=True)
+            return
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton(f"💵 20$ (ربح {get_setting('profit_20')}$)", callback_data='v_20'),
                    types.InlineKeyboardButton(f"💵 100$ (ربح {get_setting('profit_100')}$)", callback_data='v_100'),
                    types.InlineKeyboardButton(f"💵 300$ (ربح {get_setting('profit_300')}$)", callback_data='v_300'))
-        bot.edit_message_text("💰 اختر باقة الإيداع المطلوب:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text("💰 اختر باقة الاستثمار:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     elif call.data == 'u_wit':
         if datetime.now().strftime("%A") != "Friday": 
             bot.answer_callback_query(call.id, "⚠️ السحب متاح فقط يوم الجمعة!", show_alert=True)
@@ -236,14 +237,14 @@ def user_actions(call):
         if user['withdrawable_profit'] <= 0: 
             bot.answer_callback_query(call.id, "⚠️ لا يوجد رصيد للسحب.", show_alert=True)
             return
-        msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ المطلوب سحبه (متاح {user['withdrawable_profit']:.2f}$):")
+        msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ المطلوب سحبه (المتاح: {user['withdrawable_profit']:.2f}$):")
         bot.register_next_step_handler(msg, process_withdraw)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('v_'))
 def package_select(call):
     val = int(call.data.split('_')[1])
     update_user(call.from_user.id, pending_amount=val)
-    bot.edit_message_text(f"✅ باقة {val}$\nيرجى تحويل المبلغ لعنوان BEP20:\n`{get_setting('wallet')}`\nثم أرسل صورة الإثبات هنا.", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+    bot.edit_message_text(f"✅ باقة {val}$\n\nحوّل المبلغ لعنوان BEP20:\n`{get_setting('wallet')}`\n\nثم أرسل صورة الإثبات هنا.", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
 
 @bot.message_handler(content_types=['photo'])
 def handle_proof(message):
@@ -253,8 +254,8 @@ def handle_proof(message):
     markup.add(types.InlineKeyboardButton("✅ قبول", callback_data=f"app_{user['uid']}_{user['pending_amount']}"), 
                types.InlineKeyboardButton("❌ رفض", callback_data=f"rej_{user['uid']}"))
     bot.forward_message(CONFIG['ADMIN_ID'], message.chat.id, message.message_id)
-    bot.send_message(CONFIG['ADMIN_ID'], f"📩 **إيداع جديد**\n👤: {user['full_name']}\n💰: {user['pending_amount']}$", reply_markup=markup)
-    bot.send_message(message.chat.id, "⏳ تم إرسال الإثبات للإدارة.")
+    bot.send_message(CONFIG['ADMIN_ID'], f"📩 **إثبات إيداع جديد**\n👤 المستثمر: {user['full_name']}\n💰 المبلغ: {user['pending_amount']}$", reply_markup=markup)
+    bot.send_message(message.chat.id, "⏳ تم إرسال الإثبات للإدارة للمراجعة.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('app_', 'rej_')))
 def admin_approval(call):
@@ -269,19 +270,20 @@ def admin_approval(call):
             if ref:
                 new_act = ref['active_referrals'] + 1
                 update_user(ref['uid'], balance=ref['balance']+1.0, withdrawable_profit=ref['withdrawable_profit']+1.0, active_referrals=new_act)
-                try: bot.send_message(ref['uid'], f"🎉 مبروك! أحد إحالاتك أودع الآن.\n✅ مكافأتك: 1$.\n📈 إحالات فعالة: {new_act}")
+                try: bot.send_message(ref['uid'], f"🎉 مبروك! أحد إحالاتك استثمر الآن، تمت إضافة 1$ لمكافأتك.")
                 except: pass
         
-        bot.send_message(t_uid, "✅ تم قبول إيداعك بنجاح!")
+        bot.send_message(t_uid, "✅ تم تأكيد إيداعك بنجاح! بدأت الأرباح بالنزول.")
+        bot.send_message(CONFIG['ADMIN_ID'], f"✅ تم تفعيل حساب {t_uid}")
     else: 
         update_user(t_uid, pending_amount=0)
-        bot.send_message(t_uid, "❌ تم رفض الإثبات.")
+        bot.send_message(t_uid, "❌ تم رفض إثبات الإيداع.")
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
 def process_withdraw(message):
     try:
         amt = float(message.text); user = get_user(message.from_user.id)
-        if amt > user['withdrawable_profit']: bot.send_message(message.chat.id, "⚠️ الرصيد غير كافٍ."); return
+        if amt > user['withdrawable_profit']: bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ."); return
         msg = bot.send_message(message.chat.id, "💳 أرسل عنوان محفظة BEP20:"); bot.register_next_step_handler(msg, final_wit, amt)
     except: bot.send_message(message.chat.id, "⚠️ أدخل رقماً صحيحاً.")
 
@@ -292,9 +294,9 @@ def final_wit(message, amt):
         return
     user = get_user(message.from_user.id)
     update_user(user['uid'], balance=user['balance']-amt, withdrawable_profit=user['withdrawable_profit']-amt)
-    bot.send_message(CONFIG['ADMIN_ID'], f"📤 **طلب سحب**\n👤: {user['full_name']}\n💰: {amt}$\n💳: `{address}`", parse_mode='Markdown')
-    bot.send_message(message.chat.id, "⏳ طلبك قيد المراجعة.")
+    bot.send_message(CONFIG['ADMIN_ID'], f"📤 **طلب سحب جديد:**\n👤 المستثمر: {user['full_name']}\n💰 المبلغ: {amt}$\n💳 المحفظة: `{address}`")
+    bot.send_message(message.chat.id, "⏳ تم تقديم الطلب، سيتم التحويل خلال 24 ساعة.")
 
 if __name__ == "__main__":
-    print("Bot is active...")
+    print("البوت يعمل الآن...")
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
